@@ -1,0 +1,13 @@
+# The bridge and the ClusterSecretStore that points ESO at it. Assumes ESO
+# runs in the external-secrets namespace and that the two Secrets below exist
+# (see the README for how to make them).
+#
+# No `namespace:` here: kustomize would stamp it on the ClusterSecretStore
+# too, which is cluster-scoped. Each namespaced file says it itself.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml
+  - clustersecretstore.yaml

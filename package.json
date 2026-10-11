@@ -1,0 +1,32 @@
+{
+  "name": "eso-proton-pass",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Proton Pass for the External Secrets Operator: a small webhook backend around pass-cli, one vault per namespace.",
+  "type": "module",
+  "bin": {
+    "eso-proton-pass": "bin/eso-proton-pass.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node bin/eso-proton-pass.mjs",
+    "lint": "eslint .",
+    "test": "node --test --test-concurrency=1 'test/*.test.mjs'",
+    "coverage": "c8 --reporter=text --reporter=text-summary --include='src/**' --check-coverage --lines 95 --functions 95 --branches 90 node --test --test-concurrency=1 'test/*.test.mjs'",
+    "hygiene": "node scripts/hygiene.mjs",
+    "gate": "npm run lint && npm run hygiene && npm run coverage"
+  },
+  "license": "MIT",
+  "author": "sapn95",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sapn95/eso-proton-pass.git"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "c8": "^12.0.0",
+    "eslint": "^10.12.0"
+  }
+}
