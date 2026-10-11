@@ -30,17 +30,14 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+          # Files rather than variables: a variable sits in
+          # /proc/<pid>/environ for the life of the process, and every child
+          # of it can read that. The bridge reads the files when it needs them.
           env:
-            - name: PROTON_PASS_PERSONAL_ACCESS_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: eso-proton-pass-pat
-                  key: pat
-            - name: BRIDGE_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: eso-proton-pass-token
-                  key: token
+            - name: PROTON_PASS_PERSONAL_ACCESS_TOKEN_FILE
+              value: /secrets/pat/pat
+            - name: BRIDGE_TOKEN_FILE
+              value: /secrets/token/token
           readinessProbe:
             httpGet:
               path: /readyz
@@ -65,7 +62,21 @@ spec:
           volumeMounts:
             - name: session
               mountPath: /session
+            - name: pat
+              mountPath: /secrets/pat
+              readOnly: true
+            - name: token
+              mountPath: /secrets/token
+              readOnly: true
       volumes:
+        - name: pat
+          secret:
+            secretName: eso-proton-pass-pat
+            defaultMode: 0440
+        - name: token
+          secret:
+            secretName: eso-proton-pass-token
+            defaultMode: 0440
         # The Proton session and its key. Gone with the pod, which is fine:
         # the bridge logs in again on start.
         - name: session

@@ -33,6 +33,6 @@ spec:
             cidr: 0.0.0.0/0
             # Nothing inside the cluster or the home network: Proton is on
             # the internet, and that is the only place the bridge needs.
-            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+            except: [10.0.0.0/8, 100.64.0.0/10, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16]
       ports:
         - {port: 443, protocol: TCP}

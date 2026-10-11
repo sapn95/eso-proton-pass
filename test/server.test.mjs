@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { loadConfig } from '../src/config.mjs';
 import { createPass } from '../src/pass.mjs';
 import { startServer } from '../src/server.mjs';
-import { sandbox, TOKEN } from './helpers.mjs';
+import { connect } from 'node:net';
+import { sandbox, TOKEN, PAT } from './helpers.mjs';
 
 /**
  * Starts the bridge on an ephemeral port against a fresh fake, runs `body`
@@ -24,7 +25,7 @@ async function withBridge(body, { env: extra = {}, state } = {}) {
     return { status: res.status, body: await res.json(), headers: res.headers };
   };
   try {
-    await body({ get, lines, box, pass, clock });
+    await body({ get, lines, box, pass, clock, port: server.address().port });
   } finally {
     await new Promise(r => server.close(r));
   }
@@ -113,10 +114,45 @@ test('logs name what was asked, never the value', () =>
     assert.doesNotMatch(lines.join('\n'), /sk-test-1/);
   }));
 
-test('unknown paths are 404 and other methods on the endpoint 405', () =>
+test('unknown paths are 400 (never 404, which ESO reads as deleted) and other methods 405', () =>
   withBridge(async ({ get, box }) => {
-    assert.equal((await get('/v2/secret')).status, 404);
+    assert.equal((await get('/v2/secret')).status, 400);
     assert.equal((await get(q('aemtli', 'anthropic'), TOKEN, 'POST')).status, 405);
     assert.equal((await get(q('aemtli', 'anthropic'), TOKEN, 'DELETE')).status, 405);
     assert.equal(box.calls().length, 0);
+  }));
+
+test('control characters and an empty property are handled', () =>
+  withBridge(async ({ get }) => {
+    assert.equal((await get(q('aemtli', 'anthropic\u0000x'))).status, 400);
+    assert.equal((await get(q('aemtli', 'anthropic', 'va\nlue'))).status, 400);
+    assert.deepEqual((await get('/v1/secret?namespace=aemtli&key=anthropic&property=')).body, { value: 'sk-test-1' });
+  }));
+
+test('the cache keeps namespaces apart', () =>
+  withBridge(async ({ get }) => {
+    assert.deepEqual((await get(q('aemtli', 'anthropic'))).body, { value: 'sk-test-1' });
+    assert.deepEqual((await get(q('other', 'anthropic'))).body, { value: 'sk-other' });
+  }));
+
+test('a malformed request target is a 400 and the server stays up', () =>
+  withBridge(async ({ get, port }) => {
+    const raw = await new Promise((resolve, reject) => {
+      const s = connect(port, '127.0.0.1', () => s.write('GET //[/v1/secret HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n'));
+      let data = '';
+      s.on('data', d => { data += d; });
+      s.on('end', () => resolve(data));
+      s.on('error', reject);
+    });
+    assert.match(raw, /^HTTP\/1\.1 400/);
+    assert.equal((await get('/healthz', null)).status, 200);
+  }));
+
+test('a failed login leaves the token out of replies and logs', () =>
+  withBridge(async ({ get, lines, box }) => {
+    box.patchState({ pat: 'some-other-token' });
+    const res = await get(q('aemtli', 'anthropic'));
+    assert.equal(res.status, 502);
+    const everything = JSON.stringify(res.body) + lines.join('\n');
+    assert.doesNotMatch(everything, new RegExp(PAT.slice(0, 12)));
   }));

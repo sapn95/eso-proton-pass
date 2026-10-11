@@ -10,7 +10,7 @@ export default [
       globals: {
         process: 'readonly', console: 'readonly', Buffer: 'readonly',
         fetch: 'readonly', URL: 'readonly', URLSearchParams: 'readonly',
-        setTimeout: 'readonly', clearTimeout: 'readonly',
+        setTimeout: 'readonly', clearTimeout: 'readonly', AbortController: 'readonly',
       },
     },
     rules: {
@@ -21,6 +21,11 @@ export default [
       'no-return-await': 'error',
       'require-await': 'error',
     },
+  },
+  {
+    // Fakes implement async interfaces without needing to await anything.
+    files: ['test/**/*.mjs'],
+    rules: { 'require-await': 'off' },
   },
   { ignores: ['node_modules/', 'coverage/'] },
 ];
