@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: eso-proton-pass
+  namespace: external-secrets
+  labels:
+    app.kubernetes.io/name: eso-proton-pass
+spec:
+  selector:
+    app.kubernetes.io/name: eso-proton-pass
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
