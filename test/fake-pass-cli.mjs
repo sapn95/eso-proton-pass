@@ -27,9 +27,20 @@ function fail(message) {
   process.exit(1);
 }
 
-/** The value after a flag, e.g. flag('--vault-name'). */
+/**
+ * The value of a flag, in either form clap accepts: `--name=value` or
+ * `--name value`. Like clap, the second form refuses a value that starts
+ * with a dash (exit 2), which is the injection the bridge must not allow.
+ */
 function flag(name) {
-  return args[args.indexOf(name) + 1];
+  const joined = args.find(a => a.startsWith(`${name}=`));
+  if (joined) return joined.slice(name.length + 1);
+  const value = args[args.indexOf(name) + 1];
+  if (value === undefined || value.startsWith('-')) {
+    process.stderr.write(`error: a value is required for '${name} <VALUE>' but none was supplied\n`);
+    process.exit(2);
+  }
+  return value;
 }
 
 const [command, sub] = args;
@@ -41,6 +52,12 @@ const sessionFile = join(process.env.PROTON_PASS_SESSION_DIR, '.session', 'sessi
 if (existsSync(sessionFile) && readFileSync(sessionFile, 'utf8') === 'stale') fail('Error getting client');
 
 if (command === 'login') {
+  // Fails `loginFailsTimes` times (or forever with loginFails), then works.
+  if (state.loginFailsTimes > 0) {
+    state.loginFailsTimes -= 1;
+    save();
+    fail('Proton is down for maintenance');
+  }
   if (state.loginFails) fail(state.loginFails);
   if (process.env.PROTON_PASS_PERSONAL_ACCESS_TOKEN !== state.pat) fail('Invalid personal access token');
   mkdirSync(join(process.env.PROTON_PASS_SESSION_DIR, '.session'), { recursive: true });
@@ -53,12 +70,12 @@ if (command === 'login') {
 }
 
 if (command === 'item' && sub === 'view') {
-  if (!state.session) fail('Session not found, please log in');
+  if (!state.session) fail(`Error finding vault [${flag('--vault-name')}]: Error listing vaults`);
   // Simulates the two-hour PAT session running out after N reads.
   if (state.expireAfterReads !== undefined && state.reads >= state.expireAfterReads) {
     state.session = false;
     save();
-    fail('Unauthorized: session expired');
+    fail(`Error finding vault [${flag('--vault-name')}]: Error listing vaults`);
   }
   const vaultName = flag('--vault-name');
   const vault = state.vaults[vaultName];

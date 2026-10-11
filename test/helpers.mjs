@@ -22,8 +22,10 @@ export function defaultState() {
       'k8s-aemtli': {
         anthropic: { value: 'sk-test-1', note: 'two\nlines' },
         pem: { value: '-----KEY-----\n' },
+        '-dash': { value: 'dash-value' },
       },
       'k8s-other': { anthropic: { value: 'sk-other' } },
+      'homelab': { anthropic: { value: 'must-never-be-read' } },
     },
   };
 }

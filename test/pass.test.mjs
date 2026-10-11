@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadConfig } from '../src/config.mjs';
-import { createPass, classify, NotFound, NoVault, Upstream } from '../src/pass.mjs';
+import { createPass, classify, NotFound, NoVault, Upstream, Aborted } from '../src/pass.mjs';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sandbox, TOKEN } from './helpers.mjs';
@@ -19,6 +19,9 @@ test('config refuses a short bridge token and a missing PAT', () => {
   assert.throws(() => loadConfig({ ...box.env, BRIDGE_TOKEN: 'short' }), /BRIDGE_TOKEN/);
   assert.throws(() => loadConfig({ ...box.env, PROTON_PASS_PERSONAL_ACCESS_TOKEN: '' }), /PERSONAL_ACCESS_TOKEN/);
   assert.throws(() => loadConfig({ ...box.env, CACHE_SECONDS: '-1' }), /CACHE_SECONDS/);
+  assert.throws(() => loadConfig({ ...box.env, COMMAND_TIMEOUT_MS: '0' }), /COMMAND_TIMEOUT_MS/);
+  assert.throws(() => loadConfig({ ...box.env, VAULT_PREFIX: '' }), /VAULT_PREFIX/);
+  assert.throws(() => loadConfig({ ...box.env, BRIDGE_TOKEN_FILE: '/nonexistent/token' }), /does not exist/);
   const config = loadConfig(box.env);
   assert.equal(config.vaultPrefix, 'k8s-');
   assert.equal(config.defaultField, 'value');
@@ -112,8 +115,62 @@ test('classify knows the CLI messages and nothing else', () => {
   assert.ok(classify('Error: No item found with title: x') instanceof NotFound);
   assert.ok(classify('Error: Field does not exist: y') instanceof NotFound);
   assert.ok(classify('Error: Error finding vault [v]: Could not find vault v') instanceof NoVault);
+  // The same prefix wraps a dead session; that one must get a fresh login.
+  assert.equal(classify('Error: Error finding vault [v]: Error listing vaults'), null);
   assert.equal(classify('Error: Unauthorized'), null);
   assert.equal(classify(''), null);
+  // A tracing line before the error does not hide it.
+  assert.ok(classify('2026-10-11 ERROR pass::api: 422\nError: No item found with title: x') instanceof NotFound);
+});
+
+test('secrets can come from files, which are read again at each login', async () => {
+  const box = sandbox();
+  const tokenFile = join(box.dir, 'token');
+  const patFile = join(box.dir, 'pat');
+  writeFileSync(tokenFile, `${TOKEN}\n`);
+  writeFileSync(patFile, 'wrong-token\n');
+  const env = { ...box.env, BRIDGE_TOKEN: '', BRIDGE_TOKEN_FILE: tokenFile, PROTON_PASS_PERSONAL_ACCESS_TOKEN: '', PROTON_PASS_PERSONAL_ACCESS_TOKEN_FILE: patFile };
+  const config = loadConfig(env);
+  assert.equal(config.token, TOKEN, 'trimmed');
+  const pass = createPass(config, env);
+  await assert.rejects(pass.login(), /Invalid personal access token/);
+  // A rotated Secret updates the mounted file; the next login uses it.
+  writeFileSync(patFile, `${box.env.PROTON_PASS_PERSONAL_ACCESS_TOKEN}\n`);
+  await pass.login();
+  assert.equal(pass.ready, true);
+  assert.equal(box.calls().every(c => c.args[0] === 'login' || !c.hasPat), true);
+});
+
+test('an item title that starts with a dash stays a title', async () => {
+  const { pass, calls } = setup();
+  assert.equal(await pass.read('k8s-aemtli', '-dash', 'value'), 'dash-value');
+  const view = calls().find(c => c.args[0] === 'item').args;
+  assert.ok(view.includes('--item-title=-dash'), view.join(' '));
+});
+
+test('a forced login for an unknown failure happens at most once a minute', async () => {
+  const { pass, patchState, readState, clock } = setup();
+  await pass.read('k8s-aemtli', 'anthropic', 'value');
+  patchState({ expireAfterReads: 0, session: false });
+  // The first unknown failure logs in again and succeeds.
+  patchState({ expireAfterReads: 1 });
+  assert.equal(await pass.read('k8s-aemtli', 'anthropic', 'value'), 'sk-test-1');
+  const logins = readState().logins;
+  // Within the minute, another unknown failure is reported, not retried.
+  patchState({ session: false });
+  await assert.rejects(pass.read('k8s-aemtli', 'anthropic', 'value'), Upstream);
+  assert.equal(readState().logins, logins);
+  clock.t += 61_000;
+  assert.equal(await pass.read('k8s-aemtli', 'anthropic', 'value'), 'sk-test-1');
+  assert.equal(readState().logins, logins + 1);
+});
+
+test('a caller that went away skips its turn', async () => {
+  const { pass, calls } = setup();
+  const gone = new AbortController();
+  gone.abort();
+  await assert.rejects(pass.read('k8s-aemtli', 'anthropic', 'value', { signal: gone.signal }), Aborted);
+  assert.equal(calls().length, 0);
 });
 
 test('a missing binary surfaces as an upstream error', async () => {
