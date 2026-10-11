@@ -87,7 +87,7 @@ jobs:
       - name: the binary and the server start
         run: |
           docker run --rm --entrypoint pass-cli eso-proton-pass:ci --version
-          docker run --rm eso-proton-pass:ci 2>&1 | grep -q "BRIDGE_TOKEN must be set"
+          docker run --rm eso-proton-pass:ci 2>&1 | grep -q "BRIDGE_TOKEN (or BRIDGE_TOKEN_FILE) must hold"
 
   workflows:
     name: lint workflows
