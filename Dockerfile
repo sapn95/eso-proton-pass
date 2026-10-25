@@ -1,6 +1,6 @@
 # eso-proton-pass: node plus the pass-cli binary, nothing else.
 # Pinned by digest; Dependabot moves the digest along with the tag.
-FROM node:26-slim@sha256:0d1e33586362bb9e608c4e751e7a9e7edb55c9ac11461ed5666af696cc461dd4
+FROM node:26-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec
 
 # pass-cli is published as one binary per architecture. Its checksums are
 # written down here rather than fetched next to the binary: a .sha256 from the
